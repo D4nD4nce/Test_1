@@ -8,27 +8,40 @@ Something about myself
 Этот запрос показывает, какие запросы сейчас выполняются, сколько длятся, какой у них план (если доступен) и потребление ресурсов (чтение/запись). Помогает выявить внезапные всплески CPU.
 
 
-        -- Активные запросы с временем выполнения и планом (если включен auto_explain)
         SELECT
             pid,
-            usename,
+            usename AS username,
             application_name,
             client_addr,
             state,
             wait_event_type,
             wait_event,
             now() - state_change AS duration,
-            (now() - state_change) > interval '5 minutes' AS long_running,
-            query,
-            (SELECT json_agg(json_build_object('operation', op, 'relation', rel, 'rows', rows, 'cost', cost))
-             FROM pg_stat_activity_explain(pid)) AS explain_plan
+            CASE WHEN (now() - state_change) > interval '5 minutes' THEN true ELSE false END AS long_running,
+            left(query, 150) AS query_preview,
+            query AS full_query,
+            -- Дополнительные полезные поля
+            backend_type,
+            xact_start,
+            query_start,
+            state_change
         FROM pg_stat_activity
         WHERE state != 'idle'
-          AND pid != pg_backend_pid()
-          AND (query NOT LIKE '%pg_stat_activity%' OR query NOT LIKE '%pg_stat_%')
+          AND pid != pg_backend_pid()               -- исключаем текущую сессию
+          AND query NOT LIKE '%pg_stat_activity%'   -- исключаем сам мониторинговый запрос
         ORDER BY duration DESC;
 
-Примечание: функция pg_stat_activity_explain не существует – для получения плана используйте EXPLAIN (BUFFERS, ANALYZE), но его нельзя выполнить для чужого запроса. Вместо этого можно включить расширение auto_explain (shared_preload_libraries) и смотреть логи, либо использовать pg_stat_statements для анализа прошлых запросов (см. скрипт 2).
+pid – идентификатор процесса.
+username – владелец запроса.
+application_name – имя приложения (может указывать на микросервис).
+client_addr – IP-адрес клиента.
+state – состояние (active, idle in transaction и т.д.).
+wait_event_type и wait_event – если запрос ждёт, то здесь будет причина (например, Lock, IO, Client).
+duration – сколько времени запрос уже выполняется.
+long_running – флаг для запросов дольше 5 минут (можно изменить порог).
+query_preview – обрезанная версия запроса для быстрого просмотра.
+full_query – полный текст (осторожно, может быть огромным).
+Временные метки для дополнительной аналитики.
 
 
 -------------------------------------------------------------------------------------------------------------
