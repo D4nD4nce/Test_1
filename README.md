@@ -70,15 +70,17 @@ Something about myself
 
 Дублирующиеся индексы (одинаковые столбцы).
 
+        -- Анализ использования индексов (без ambiguous)
         WITH table_scan AS (
             SELECT
                 schemaname,
                 relname AS table_name,
+                relid,
                 seq_scan,
                 seq_tup_read,
                 idx_scan,
                 idx_tup_fetch,
-                pg_relation_size(schemaname||'.'||relname) AS table_size
+                pg_relation_size(relid) AS table_size
             FROM pg_stat_user_tables
             WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
         ),
@@ -87,13 +89,14 @@ Something about myself
                 schemaname,
                 relname AS table_name,
                 indexrelname AS index_name,
+                indexrelid,
                 idx_scan,
                 pg_relation_size(indexrelid) AS index_size,
-                (SELECT array_agg(attname) FROM pg_index i
+                (SELECT array_agg(a.attname)
+                 FROM pg_index i
                  JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-                 WHERE i.indexrelid = c.oid) AS indexed_columns
-            FROM pg_stat_user_indexes
-            JOIN pg_class c ON c.oid = indexrelid
+                 WHERE i.indexrelid = idx.indexrelid) AS indexed_columns
+            FROM pg_stat_user_indexes idx
             WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
         )
         SELECT
@@ -110,7 +113,9 @@ Something about myself
             i.index_size,
             i.indexed_columns
         FROM table_scan t
-        LEFT JOIN index_usage i ON i.schemaname = t.schemaname AND i.table_name = t.table_name
+        LEFT JOIN index_usage i
+            ON i.schemaname = t.schemaname
+            AND i.table_name = t.table_name
         ORDER BY t.schemaname, t.table_name, i.idx_scan NULLS LAST;
 
 Особое внимание обратите на таблицы с большим seq_scan и низким idx_scan_percent – это кандидаты на создание индексов. Индексы с idx_scan = 0 и большим размером – лишние.
