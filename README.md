@@ -70,24 +70,23 @@ Something about myself
 
 Дублирующиеся индексы (одинаковые столбцы).
 
-
         WITH table_scan AS (
             SELECT
                 schemaname,
-                tablename,
+                relname AS table_name,
                 seq_scan,
                 seq_tup_read,
                 idx_scan,
                 idx_tup_fetch,
-                pg_relation_size(schemaname||'.'||tablename) AS table_size
+                pg_relation_size(schemaname||'.'||relname) AS table_size
             FROM pg_stat_user_tables
             WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
         ),
         index_usage AS (
             SELECT
                 schemaname,
-                tablename,
-                indexname,
+                relname AS table_name,
+                indexrelname AS index_name,
                 idx_scan,
                 pg_relation_size(indexrelid) AS index_size,
                 (SELECT array_agg(attname) FROM pg_index i
@@ -99,20 +98,20 @@ Something about myself
         )
         SELECT
             t.schemaname,
-            t.tablename,
+            t.table_name,
             t.table_size,
             t.seq_scan,
             t.idx_scan,
             CASE WHEN t.seq_scan + t.idx_scan > 0
                  THEN round(100.0 * t.idx_scan / (t.seq_scan + t.idx_scan), 2)
                  ELSE 0 END AS idx_scan_percent,
-            i.indexname,
+            i.index_name,
             i.idx_scan AS index_scans,
             i.index_size,
             i.indexed_columns
         FROM table_scan t
-        LEFT JOIN index_usage i ON i.schemaname = t.schemaname AND i.tablename = t.tablename
-        ORDER BY t.schemaname, t.tablename, i.idx_scan NULLS LAST;
+        LEFT JOIN index_usage i ON i.schemaname = t.schemaname AND i.table_name = t.table_name
+        ORDER BY t.schemaname, t.table_name, i.idx_scan NULLS LAST;
 
 Особое внимание обратите на таблицы с большим seq_scan и низким idx_scan_percent – это кандидаты на создание индексов. Индексы с idx_scan = 0 и большим размером – лишние.
 
@@ -161,7 +160,7 @@ Something about myself
         -- Hit ratio по таблицам
         SELECT
             schemaname,
-            tablename,
+            relname AS table_name,
             heap_blks_hit,
             heap_blks_read,
             round(100.0 * heap_blks_hit / (heap_blks_hit + heap_blks_read + 1), 2) AS heap_hit_ratio,
@@ -198,10 +197,10 @@ Something about myself
 
         SELECT
             schemaname,
-            tablename,
-            pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size,
-            pg_size_pretty(pg_relation_size(schemaname||'.'||tablename)) AS table_size,
-            pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename) - pg_relation_size(schemaname||'.'||tablename)) AS index_total_size,
+            relname AS table_name,
+            pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) AS total_size,
+            pg_size_pretty(pg_relation_size(schemaname||'.'||relname)) AS table_size,
+            pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname) - pg_relation_size(schemaname||'.'||relname)) AS index_total_size,
             n_live_tup,
             n_dead_tup,
             round(100.0 * n_dead_tup / (n_live_tup + 1), 2) AS dead_ratio,
@@ -211,7 +210,7 @@ Something about myself
             last_autoanalyze
         FROM pg_stat_user_tables
         WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+        ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC
         LIMIT 30;
 
 Высокое значение dead_ratio (> 10%) и отсутствие свежих VACUUM – повод проверить настройки autovacuum.
