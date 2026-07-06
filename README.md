@@ -198,9 +198,9 @@ Something about myself
         SELECT
             schemaname,
             relname AS table_name,
-            pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname)) AS total_size,
-            pg_size_pretty(pg_relation_size(schemaname||'.'||relname)) AS table_size,
-            pg_size_pretty(pg_total_relation_size(schemaname||'.'||relname) - pg_relation_size(schemaname||'.'||relname)) AS index_total_size,
+            pg_size_pretty(pg_total_relation_size(relid)) AS total_size,
+            pg_size_pretty(pg_relation_size(relid)) AS table_size,
+            pg_size_pretty(pg_total_relation_size(relid) - pg_relation_size(relid)) AS index_total_size,
             n_live_tup,
             n_dead_tup,
             round(100.0 * n_dead_tup / (n_live_tup + 1), 2) AS dead_ratio,
@@ -210,7 +210,7 @@ Something about myself
             last_autoanalyze
         FROM pg_stat_user_tables
         WHERE schemaname NOT IN ('information_schema', 'pg_catalog')
-        ORDER BY pg_total_relation_size(schemaname||'.'||relname) DESC
+        ORDER BY pg_total_relation_size(relid) DESC
         LIMIT 30;
 
 Высокое значение dead_ratio (> 10%) и отсутствие свежих VACUUM – повод проверить настройки autovacuum.
